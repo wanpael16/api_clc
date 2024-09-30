@@ -3,7 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-// use App\Http\Middleware\CheckAuthenticated;
+
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',
@@ -13,7 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi();
-        // $middleware->append(CheckAuthenticated::class);
+        $middleware->alias([
+            'active' => \App\Http\Middleware\CheckUserActive::class,
+        ]);
+
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

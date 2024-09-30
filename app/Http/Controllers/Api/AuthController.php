@@ -13,13 +13,10 @@ use Laravel\Sanctum\PersonalAccessToken;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Session;
 
-
-
 class AuthController extends Controller
 {
     public function register(Request $request)
     {
-
         //validación de los datos
         $request->validate([
             'name' => 'required',
@@ -32,30 +29,25 @@ class AuthController extends Controller
         $user->email = $request->email;
         $user->password = Hash::make($request->password);
         $user->save();
-        //respuesta
-        // return response()->json([
-        //     "message" => "Alta exitosa"
-        // ]);
         return response($user, Response::HTTP_CREATED);
     }
 
-    public function isTokenExpired($tokenId)
+    public function isTokenExpired($token)
     {
-        // Obtener el modelo del token usando el token dado
-        $tokenModel =  PersonalAccessToken::where('tokenable_id', $tokenId)->first();
+        // Obtener el modelo del token usando el tokenable_id dado
+        $tokenModel =  PersonalAccessToken::where('token', $token)->first();
         if ($tokenModel) {
             // Comprobar si la fecha de expiración está establecida y si ha pasado
-            return   $tokenModel->expires_at ? $tokenModel->expires_at <  $tokenModel->created_at : true;
+            return   $tokenModel->expires_at ? $tokenModel->expires_at <  $tokenModel->last_used_at : true;
         }
-
         return true; // Si no se encuentra el token, consideramos que ha expirado
     }
 
     public function login(Request $request)
     {
-
-        $json = json_decode(file_get_contents('php://input'), true);
-        if (!is_array($json)) {
+        //Obtenemos los parametros enviado por la ruta con el metodo post
+        $json = json_decode(file_get_contents('php://input'), true); 
+        if (!is_array($json)) { 
             $array =
                 array(
                     'response' => array(
@@ -71,19 +63,25 @@ class AuthController extends Controller
             'password' => ['required']
         ]);
 
-
+        // Intenta autenticar al usuario
+        // Auth::attempt se utiliza para autenticar a un usuario con sus credenciales.
         if (Auth::attempt($credentials)) {
-            $user = Auth::user();
-            // Obtener la fecha actual
-            $today = Carbon::now()->format('Y-m-d');
-            // Verificar si ya tiene un token creado hoy
-            $existingToken = PersonalAccessToken::where('tokenable_id', $user->id)
+            $user = Auth::user();//Obtiene el usuario autenticado
+            if (!$user->is_active) {
+                Auth::logout(); // Cierra la sesión si no está activo
+                return response()->json(['message' => 'Acceso denegado. Usuario inactivo.'], 403);
+            }
+
+                // Obtener la fecha actual
+                $today = Carbon::now()->format('Y-m-d');
+                // Verificar si ya tiene un token creado hoy
+                $existingToken = PersonalAccessToken::where('tokenable_id', $user->id)
                 ->where('tokenable_type', 'App\Models\User')
                 ->whereDate('created_at', $today) // Verificar la fecha de creación
                 ->first();
                 if ($existingToken) {
-                    $token_id =$existingToken->tokenable_id; // obtenemos el tokenable_id.
-                if ( $this->isTokenExpired($token_id)) {
+                    // $token_id =$existingToken->tokenable_id; // obtenemos el tokenable_id.
+                if ( $this->isTokenExpired($existingToken->token)) {
                     return response()->json(['error' => 'Token ha expirado'], 401);
                 }
                 $cookie = cookie('cookie_token', $existingToken->textTokenpPain, 60 * 24);
@@ -104,9 +102,6 @@ class AuthController extends Controller
 
     public function userProfile(Request $request)
     {
-        if (!Cookie::has('cookie_token')) {
-            return response()->json(['message' => 'No estás autenticado.'], 401);
-        }
         return response()->json([
             "message" => "userProfile OK",
             "userData" => auth()->user()
